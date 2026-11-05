@@ -4,6 +4,7 @@
 // cached page) or a same-document change that never emits "complete" made
 // navigate sit out its full 10s timeout.
 import { extractMethod, extractFunction, compile } from "./_extract.mjs";
+import * as approvals from "../extension/approvals.js";
 let fail = 0;
 const ok = (c, m) => { console.log((c ? "  PASS " : "  FAIL ") + m); if (!c) fail++; };
 
@@ -30,7 +31,7 @@ function mkChrome(tab, onNavigate) {
 function build(chrome) {
   return compile(
     [extractFunction("startNavigation"), `const H = { ${extractMethod("navigate")} };`].join("\n\n"),
-    { chrome, isInGroup: async () => true, tabGroupId: 55 },
+    { chrome, approvals, isInGroup: async () => true, tabGroupId: 55 },
     "H"
   );
 }

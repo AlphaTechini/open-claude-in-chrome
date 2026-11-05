@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { extractFunction, compile, ROOT } from "./_extract.mjs";
+import * as approvals from "../extension/approvals.js";
 let fail = 0;
 const ok = (c, m) => { console.log((c ? "  PASS " : "  FAIL ") + m); if (!c) fail++; };
 
@@ -33,20 +34,110 @@ console.log("== isInGroup: only tabs currently in the MCP group ==");
   ok(!(await box.isInGroup(9)), "a tab that does not exist is refused");
 }
 
-console.log("== audit_mode: never records a tab outside the MCP group ==");
-{
+// handleToolRequest + withApprovalNotice as shipped, over a mocked chrome with
+// a configurable set of tabs and popup windows.
+const SELF_BASE = "chrome-extension://selfselfselfselfselfselfselfself/";
+const WALLET = "chrome-extension://nkbihfbeogaeaoehlefnkodbefgpgknn";
+function mkDispatch({ tabs = {}, popups = [] } = {}) {
   const noted = [];
   const sent = [];
+  const handled = [];
+  const chrome = {
+    tabs: {
+      get: async (id) => { if (!tabs[id]) throw new Error("No tab with id: " + id); return { id, ...tabs[id] }; }
+    },
+    windows: {
+      getAll: async (q) => (q && q.windowTypes && q.windowTypes.includes("popup") ? popups : [])
+    }
+  };
   const deps = {
+    chrome, approvals, SELF_BASE,
     audit: { isEnabled: () => true, noteAction: async (a) => { noted.push(a); } },
     isInGroup: async (id) => id === 1,
-    toolHandlers: { navigate: async () => ({ content: [{ type: "text", text: "ok" }] }) },
+    toolHandlers: {
+      navigate: async (a) => { handled.push(a); return { content: [{ type: "text", text: "ok" }] }; },
+      computer: async (a) => { handled.push(a); return { content: [{ type: "text", text: "clicked" }] }; },
+      boom: async () => { throw new Error("kaput"); }
+    },
     recorder: { deliveredIds: new Set() },
     nativePort: null,
     dbg: () => {}, argSummary: () => "", resultShape: () => "", recordTiming: () => {},
     sendResponse: (id, r) => sent.push({ id, r }), sendError: (id, e) => sent.push({ id, e })
   };
-  const handleToolRequest = compile(extractFunction("handleToolRequest"), deps, "handleToolRequest");
+  const handleToolRequest = compile(
+    `${extractFunction("handleToolRequest")}\n${extractFunction("withApprovalNotice")}`,
+    deps,
+    "handleToolRequest"
+  );
+  return { handleToolRequest, noted, sent, handled };
+}
+
+console.log("== another extension's page is never driven ==");
+{
+  const { handleToolRequest, sent, handled } = mkDispatch({
+    tabs: {
+      1: { url: "https://dapp.test/" },
+      5: { url: `${WALLET}/notification.html` },
+      6: { url: "about:blank", pendingUrl: `${WALLET}/home.html` },
+      7: { url: `${SELF_BASE}recorder/options.html` }
+    }
+  });
+  await handleToolRequest("h1_1", "computer", { tabId: 5, action: "left_click", coordinate: [10, 10] });
+  ok(handled.length === 0, "a click aimed at a wallet's page never reaches the handler");
+  ok(/^Refused: tab 5 shows another extension's page/.test(sent[0].r.content[0].text), "and the agent is told why, and to ask the user");
+  await handleToolRequest("h1_2", "computer", { tabId: 6, action: "screenshot" });
+  ok(handled.length === 0 && /Refused/.test(sent[1].r.content[0].text), "a tab still loading a wallet page (pendingUrl) is refused too");
+  await handleToolRequest("h1_3", "computer", { tabId: 7, action: "screenshot" });
+  ok(handled.length === 1, "this extension's own pages are not caught by the guard");
+  await handleToolRequest("h1_4", "computer", { tabId: 1, action: "left_click", coordinate: [10, 10] });
+  ok(handled.length === 2 && sent[3].r.content[0].text === "clicked", "an ordinary dapp tab runs normally");
+}
+{
+  ok(approvals.isForeignExtensionUrl(`${WALLET}/popup.html`, SELF_BASE), "isForeignExtensionUrl: another extension");
+  ok(approvals.isForeignExtensionUrl(`CHROME-EXTENSION://${WALLET.slice(19)}/x`, SELF_BASE), "isForeignExtensionUrl: scheme is case-insensitive");
+  ok(!approvals.isForeignExtensionUrl(`${SELF_BASE}x.html`, SELF_BASE), "isForeignExtensionUrl: our own pages");
+  ok(!approvals.isForeignExtensionUrl("https://chrome-extension.test/", SELF_BASE), "isForeignExtensionUrl: an https look-alike");
+  ok(!approvals.isForeignExtensionUrl(undefined, SELF_BASE), "isForeignExtensionUrl: no URL");
+}
+
+console.log("== navigate refuses extension URLs ==");
+{
+  const navigateTo = compile(extractFunction("startNavigation"), {
+    approvals, chrome: { tabs: { update: async () => { throw new Error("must not navigate"); } } }
+  }, "startNavigation");
+  let err = null;
+  try { await navigateTo(1, `${WALLET}/home.html`); } catch (e) { err = e; }
+  ok(err && err.toolText && /^Refused: navigate does not open extension pages/.test(err.message), "chrome-extension:// is refused with a message");
+  err = null;
+  try { await navigateTo(1, "  Chrome-Extension://abc/x"); } catch (e) { err = e; }
+  ok(err && err.toolText, "including with odd case and leading spaces");
+}
+
+console.log("== an open wallet popup is announced on every result ==");
+{
+  const popups = [
+    { id: 900, tabs: [{ id: 50, title: "MetaMask", url: `${WALLET}/notification.html#confirm` }] },
+    { id: 901, tabs: [{ id: 51, title: "Our own popup", url: `${SELF_BASE}x.html` }] }
+  ];
+  const { handleToolRequest, sent } = mkDispatch({ tabs: { 1: { url: "https://dapp.test/" } }, popups });
+  await handleToolRequest("h1_1", "computer", { tabId: 1, action: "screenshot" });
+  const first = sent[0].r.content[0].text;
+  ok(/^MANUAL APPROVAL NEEDED/.test(first), "the notice leads the result");
+  ok(first.includes("window 900") && first.includes('"MetaMask"') && first.includes("notification.html"), "it names the window, title and URL");
+  ok(!first.includes("window 901"), "a popup of this extension is not announced");
+  ok(sent[0].r.content[1].text === "clicked", "the tool's own result follows unchanged");
+  await handleToolRequest("h1_2", "boom", {});
+  ok(/^boom failed: kaput\n\nMANUAL APPROVAL NEEDED/.test(sent[1].e), "errors carry the notice too");
+}
+{
+  const { handleToolRequest, sent } = mkDispatch({ tabs: { 1: { url: "https://dapp.test/" } }, popups: [] });
+  await handleToolRequest("h1_1", "computer", { tabId: 1, action: "screenshot" });
+  ok(sent[0].r.content.length === 1 && sent[0].r.content[0].text === "clicked", "with no popup open, results are untouched");
+}
+
+console.log("== audit_mode: never records a tab outside the MCP group ==");
+{
+  const { handleToolRequest, noted, sent } = mkDispatch();
   await handleToolRequest("h1_1", "navigate", { tabId: 1, url: "https://a.test" });
   await handleToolRequest("h1_2", "navigate", { tabId: 42, url: "https://a.test" });
   await handleToolRequest("h1_3", "navigate", { url: "https://a.test" });

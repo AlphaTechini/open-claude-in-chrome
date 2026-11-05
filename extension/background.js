@@ -3,6 +3,7 @@
 
 import * as humanize from "./humanize/index.js";
 import * as audit from "./audit/index.js";
+import * as approvals from "./approvals.js";
 
 // Prevent unhandled rejections from killing the service worker
 self.addEventListener("unhandledrejection", (event) => {
@@ -18,6 +19,9 @@ try {
 } catch {}
 
 const NATIVE_HOST_NAME = "com.anthropic.open_claude_in_chrome";
+// This extension's own origin, "chrome-extension://<id>/". Anything else under
+// chrome-extension:// belongs to another extension.
+const SELF_BASE = chrome.runtime.getURL("");
 
 // --- State ---
 let nativePort = null;
@@ -1232,10 +1236,17 @@ function dbg(kind, detail, extra) {
 }
 
 // Kick off the navigation `navigate` asked for, without waiting for the load.
-// Throws an error tagged `invalidUrl` for input that does not parse.
+// Throws an error tagged `toolText` (its message is the tool result) for input
+// that does not parse or that navigate refuses to open.
 async function startNavigation(tabId, url) {
   if (url === "back") return chrome.tabs.goBack(tabId);
   if (url === "forward") return chrome.tabs.goForward(tabId);
+  const refusal = approvals.extensionNavigateRefusal(url);
+  if (refusal) {
+    const err = new Error(refusal);
+    err.toolText = true;
+    throw err;
+  }
   let targetUrl = url;
   // Strip any malformed protocol prefix before normalizing
   if (!targetUrl.match(/^https?:\/\//i) && !targetUrl.startsWith("about:") && !targetUrl.startsWith("chrome:") && !targetUrl.startsWith("brave:")) {
@@ -1247,7 +1258,7 @@ async function startNavigation(tabId, url) {
     new URL(targetUrl); // Validate URL before passing to Chrome
   } catch {
     const err = new Error(`Invalid URL: "${url}". Could not parse as a valid URL.`);
-    err.invalidUrl = true;
+    err.toolText = true;
     throw err;
   }
   return chrome.tabs.update(tabId, { url: targetUrl });
@@ -1396,7 +1407,7 @@ const toolHandlers = {
       await startNavigation(tabId, url);
     } catch (e) {
       settle();
-      if (e.invalidUrl) return { content: [{ type: "text", text: e.message }] };
+      if (e.toolText) return { content: [{ type: "text", text: e.message }] };
       throw e;
     }
 
@@ -2624,6 +2635,22 @@ async function handleToolRequest(id, tool, args) {
   const label = tool === "computer" ? `computer.${args && args.action}` : tool;
   dbg("tool", `${label} <- ${argSummary(args)}`, { tab: args && args.tabId });
 
+  // Another extension's page (a wallet popup, say) is never ours to drive.
+  // Chrome refuses the debugger there anyway; this turns its raw CDP error
+  // into an instruction the agent can follow.
+  if (args && typeof args.tabId === "number") {
+    let tab = null;
+    try {
+      tab = await chrome.tabs.get(args.tabId);
+    } catch {}
+    const refusal = approvals.foreignTabRefusal(tab, SELF_BASE);
+    if (refusal) {
+      dbg("tool", `${label} -> REFUSED (another extension's page)`, { tab: args.tabId });
+      sendResponse(id, await withApprovalNotice({ content: [{ type: "text", text: refusal }] }));
+      return;
+    }
+  }
+
   // Attribute this action to the Claude Code session that asked for it. The
   // host namespaces every request as `h{clientId}_{id}` and we echo that id
   // back untouched, so the client is already identifiable here with no
@@ -2670,11 +2697,21 @@ async function handleToolRequest(id, tool, args) {
     if (tool !== "javascript_tool" && tool !== "debug_timings") {
       recordTiming({ t: t0, tool, tab: args?.tabId, ms: Date.now() - t0 });
     }
-    sendResponse(id, result);
+    sendResponse(id, await withApprovalNotice(result));
   } catch (err) {
     dbg("tool", `${label} -> THREW`, { tab: args && args.tabId, ms: Date.now() - t0, err: String(err.message).slice(0, 160) });
-    sendError(id, `${tool} failed: ${err.message}`);
+    const notice = await approvals.approvalNotice(chrome, SELF_BASE);
+    sendError(id, `${tool} failed: ${err.message}${notice ? `\n\n${notice}` : ""}`);
   }
+}
+
+// Lead a tool result with the approval notice while another extension's popup
+// is open, so whatever the agent asked for, it learns the user is needed.
+async function withApprovalNotice(result) {
+  const notice = await approvals.approvalNotice(chrome, SELF_BASE);
+  if (!notice) return result;
+  const content = Array.isArray(result && result.content) ? result.content : [];
+  return { ...result, content: [{ type: "text", text: notice }, ...content] };
 }
 
 // ===========================================================================
