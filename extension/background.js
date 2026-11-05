@@ -1220,6 +1220,28 @@ function dbg(kind, detail, extra) {
   }
 }
 
+// Kick off the navigation `navigate` asked for, without waiting for the load.
+// Throws an error tagged `invalidUrl` for input that does not parse.
+async function startNavigation(tabId, url) {
+  if (url === "back") return chrome.tabs.goBack(tabId);
+  if (url === "forward") return chrome.tabs.goForward(tabId);
+  let targetUrl = url;
+  // Strip any malformed protocol prefix before normalizing
+  if (!targetUrl.match(/^https?:\/\//i) && !targetUrl.startsWith("about:") && !targetUrl.startsWith("chrome:") && !targetUrl.startsWith("brave:")) {
+    // Remove any partial/broken protocol prefix (e.g., "hps://", "http:/", "ht://")
+    targetUrl = targetUrl.replace(/^[a-z]{1,5}:\/+/i, "");
+    targetUrl = "https://" + targetUrl;
+  }
+  try {
+    new URL(targetUrl); // Validate URL before passing to Chrome
+  } catch {
+    const err = new Error(`Invalid URL: "${url}". Could not parse as a valid URL.`);
+    err.invalidUrl = true;
+    throw err;
+  }
+  return chrome.tabs.update(tabId, { url: targetUrl });
+}
+
 // --- Tool handlers ---
 const toolHandlers = {
   async tabs_context_mcp(args) {
@@ -1340,42 +1362,41 @@ const toolHandlers = {
     const { url, tabId } = args;
     if (!(await isInGroup(tabId))) return { content: [{ type: "text", text: `Tab ${tabId} is not in the MCP group.` }] };
 
-    if (url === "back") {
-      await chrome.tabs.goBack(tabId);
-    } else if (url === "forward") {
-      await chrome.tabs.goForward(tabId);
-    } else {
-      let targetUrl = url;
-      // Strip any malformed protocol prefix before normalizing
-      if (!targetUrl.match(/^https?:\/\//i) && !targetUrl.startsWith("about:") && !targetUrl.startsWith("chrome:") && !targetUrl.startsWith("brave:")) {
-        // Remove any partial/broken protocol prefix (e.g., "hps://", "http:/", "ht://")
-        targetUrl = targetUrl.replace(/^[a-z]{1,5}:\/+/i, "");
-        targetUrl = "https://" + targetUrl;
-      }
-      try {
-        new URL(targetUrl); // Validate URL before passing to Chrome
-      } catch {
-        return { content: [{ type: "text", text: `Invalid URL: "${url}". Could not parse as a valid URL.` }] };
-      }
-      await chrome.tabs.update(tabId, { url: targetUrl });
-    }
-
-    // Wait for page load — short timeout to avoid service worker idle kill
-    // If the page takes longer, the caller can use screenshot/wait to check
-    await new Promise((resolve) => {
+    // Listen BEFORE navigating. A cached or bfcache page can reach "complete"
+    // before update()/goBack() even resolve, and a listener added afterwards
+    // misses it and sits out the whole timeout. 10s max, to stay well inside
+    // the service worker's idle limit; the caller can screenshot/wait after.
+    const urlBefore = (await chrome.tabs.get(tabId)).url;
+    let settle;
+    const loaded = new Promise((resolve) => {
       const listener = (updatedTabId, info) => {
-        if (updatedTabId === tabId && info.status === "complete") {
-          chrome.tabs.onUpdated.removeListener(listener);
-          resolve();
-        }
+        if (updatedTabId === tabId && info.status === "complete") settle();
       };
-      chrome.tabs.onUpdated.addListener(listener);
-      // 10s max — enough for most pages, avoids service worker timeout
-      setTimeout(() => {
+      const timer = setTimeout(() => settle(), 10000);
+      settle = () => {
+        clearTimeout(timer);
         chrome.tabs.onUpdated.removeListener(listener);
         resolve();
-      }, 10000);
+      };
+      chrome.tabs.onUpdated.addListener(listener);
     });
+
+    try {
+      await startNavigation(tabId, url);
+    } catch (e) {
+      settle();
+      if (e.invalidUrl) return { content: [{ type: "text", text: e.message }] };
+      throw e;
+    }
+
+    // Same-document navigations (hash, pushState-style history entries) never
+    // emit "complete", and a load can finish before the listener above ever
+    // sees it. If the tab already shows a new URL and is done, that is the load.
+    try {
+      const now = await chrome.tabs.get(tabId);
+      if (now.status === "complete" && now.url !== urlBefore) settle();
+    } catch {}
+    await loaded;
 
     const tab = await chrome.tabs.get(tabId);
     const tabs = await chrome.tabs.query({ groupId: tabGroupId });
