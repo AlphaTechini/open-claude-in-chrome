@@ -5,9 +5,9 @@
   "type": "module",
   "main": "worker.js",
   "dependencies": {
-    "@cloudflare/codemode": "^0.3.7"
+    "@cloudflare/codemode": "^0.3.8"
   },
   "devDependencies": {
-    "wrangler": "^4.94.0"
+    "wrangler": "^4.157.0"
   }
 }
