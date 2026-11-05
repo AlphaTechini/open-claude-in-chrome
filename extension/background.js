@@ -9,6 +9,14 @@ self.addEventListener("unhandledrejection", (event) => {
   event.preventDefault();
 });
 
+// storage.local holds the OpenAI key and is exposed to content scripts by
+// default. None of ours read storage, so keep it to extension pages; a
+// compromised renderer then has no path to the key. Re-applied on every
+// worker start since the level is not guaranteed to persist.
+try {
+  chrome.storage.local.setAccessLevel?.({ accessLevel: "TRUSTED_CONTEXTS" })?.catch?.(() => {});
+} catch {}
+
 const NATIVE_HOST_NAME = "com.anthropic.open_claude_in_chrome";
 
 // --- State ---
