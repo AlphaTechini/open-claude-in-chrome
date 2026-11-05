@@ -7,11 +7,9 @@
   "permissions": [
     "tabs",
     "debugger",
-    "activeTab",
     "scripting",
     "nativeMessaging",
     "tabGroups",
-    "windows",
     "storage",
     "alarms",
     "offscreen",
