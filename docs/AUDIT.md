@@ -524,3 +524,29 @@ Not upgraded:
 - Decision (2026-11-05): defer. Upgrading means replacing `zod-to-json-schema` with zod 4's
   `z.toJSONSchema` in `tool-definitions.js` and re-verifying every tool schema. Revisit when
   this fork next touches tool definitions.
+
+## 12. Use in a real browser profile (2026-11-05)
+
+Sections 1-11 assumed a throwaway "Demo" profile. For the wallet test the extension is loaded
+in the user's everyday profile, which holds logged-in sessions and a real wallet. The code
+is unchanged; what changes is what each existing risk can reach.
+
+| # | Risk | Real-profile impact |
+|---|---|---|
+| R1 | L1: the native host keeps the pipe open while Chrome runs with the extension enabled (`connectNativeHost` at worker start, a keepalive alarm every 24 s), and any same-user process can drive it without authentication | Malware running as the user could open tabs and run JS in any logged-in site, sidestepping Chrome's app-bound cookie encryption. The largest real-profile risk. |
+| R2 | The MCP server is registered at user scope, so every Claude Code session on the machine has the tools | A session in an untrusted repo, or one steered by injected page text, can drive the real browser. |
+| R3 | `get_page_text`, `read_page`, screenshots and `javascript_tool` results go to the model | Anything on a page the agent opens leaves the machine. Keep it on the dapp tab. |
+| R4 | `javascript_tool` on a dapp can call `window.ethereum.request(...)` | Can open a signature or transaction prompt. The extension cannot act inside the popup (section 8, M1), so the human approval is the safeguard. |
+| R5 | Unpacked extensions load from `extension/` in this repo | Anything that edits the folder changes the code that runs next to the wallet on the next Chrome start. |
+
+Not affected: no outbound calls without a user-set OpenAI key, recording off by default,
+no `cookies`/`history`/`webRequest` permissions, `file_upload` folder allowlist, all tools
+gated to the MCP tab group. The extension ID is derived from the folder path (no `key` in the
+manifest), so loading the same folder in the real profile gets the same ID and the existing
+native-host registration works without reinstalling.
+
+Decisions (user, 2026-11-05):
+- Run the wallet test in the real profile, with the extension enabled only while testing and
+  switched off at `chrome://extensions` right after. That closes R1 between sessions.
+  Rejected: a separate wallet-only profile, and a click-to-arm toolbar safeguard.
+- Keep the MCP server at user scope (R2 accepted), so recording works from any folder.
