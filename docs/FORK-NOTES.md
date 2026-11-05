@@ -109,10 +109,12 @@ After the fixes (final tree):
       (both gitignored). `allowed_origins` has only that ID. It registered
       `HKCU\Software\{Google\Chrome,Microsoft\Edge,BraveSoftware\Brave-Browser}\NativeMessagingHosts\com.anthropic.open_claude_in_chrome`.
 - [x] `claude mcp add open-claude-in-chrome -- node C:\Users\rehob\project\open-claude-in-chrome\host\mcp-server.js`
-      (local scope: only active when Claude Code runs in this repo folder). `claude mcp get`
-      reports Connected.
-- [ ] User fully restarted Chrome (all windows, so the native host registration is read),
-      then restarted Claude Code in this folder.
+      Re-registered at user scope on 2026-11-05 (`claude mcp add -s user ...`), so it loads in
+      every Claude Code session from any folder, which the recording session needs.
+      `claude mcp get` reports Connected.
+- [x] Chrome fully restarted. The native host runs for the extension ID and owns
+      `\\.\pipe\open-claude-in-chrome-rehob`.
+- [ ] User restarted Claude Code (any folder) so the `mcp__open-claude-in-chrome__*` tools load.
 
 First thing in step 7: call `mcp__open-claude-in-chrome__tabs_context_mcp` with
 `createIfEmpty: true`. If it says the extension is not connected:
