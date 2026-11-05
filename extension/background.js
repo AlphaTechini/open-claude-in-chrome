@@ -328,7 +328,10 @@ async function isInGroup(tabId) {
       }
       return tab.groupId === tabGroupId;
     }
-    return tabGroupTabs.has(tabId);
+    // Ungrouped right now. A tab dragged out of the MCP group must stop being
+    // drivable, whatever the in-memory set still remembers.
+    tabGroupTabs.delete(tabId);
+    return false;
   } catch {
     return false;
   }
