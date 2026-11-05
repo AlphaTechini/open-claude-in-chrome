@@ -2634,12 +2634,17 @@ async function handleToolRequest(id, tool, args) {
   // or the first action on a tab is the one action the replay is missing.
   if (audit.isEnabled()) {
     const clientId = (String(id).match(/^h(\d+)_/) || [])[1] ?? null;
+    // noteAction starts an rrweb recording in the tab it is given, and it runs
+    // before the handler's own group check. Only hand it tabs the agent is
+    // allowed to drive, or naming any tab id would record that tab.
+    const auditTab =
+      args && typeof args.tabId === "number" && (await isInGroup(args.tabId)) ? args.tabId : undefined;
     await audit
       .noteAction({
         clientId,
         tool,
         action: args && args.action,
-        tabId: args && args.tabId,
+        tabId: auditTab,
         detail: argSummary(args),
         // Passed rather than imported so the audit module stays free of any
         // native-host coupling — the seam that keeps it foldable later.
