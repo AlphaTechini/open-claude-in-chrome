@@ -1,0 +1,8 @@
+# These three only verify (or, as a fallback, fetch or build) the native
+# binaries that their @esbuild/*, @cloudflare/workerd-* and @img/sharp-*
+# optional dependencies already ship for this platform, so wrangler runs
+# without them. Denied explicitly so an install never runs dependency code.
+allowBuilds:
+  esbuild: false
+  workerd: false
+  sharp: false
