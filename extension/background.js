@@ -342,17 +342,45 @@ async function isInGroup(tabId) {
 }
 
 // --- CDP helpers ---
-// NOTE ON TAB ACTIVATION: nothing in here selects a tab or raises a window.
-// Automation drives background tabs, so it never yanks the operator away from
-// what they are doing — that interruption is the whole of issue #28, and it is
-// also how the official Claude in Chrome behaves. The one deliberate exception
-// is the set_tab_focus tool, which exists precisely so surfacing a tab is a
-// choice the agent makes rather than a side effect of every click.
+// NOTE ON TAB ACTIVATION: nothing here raises a window, so the operator's
+// focus is never stolen from another app (issue #28). Creating a tab, reading
+// it and running scripts in it never select it either.
 //
-// The tradeoff: Chromium throttles a fully hidden tab's compositor, so input
-// dispatched to one can be slower than to a visible tab. A tab in a visible
-// window (even an unfocused one) still renders, which is the normal case here
-// since the MCP group lives in its own window.
+// This fork does select a tab inside its own window before the computer tool
+// acts on it (ensureTabSelected). Upstream drove unselected tabs and leaned on
+// focus emulation, but on Chrome 156 / Windows an unselected tab neither paints
+// (Page.captureScreenshot hangs to its timeout) nor takes input (clicks are
+// dispatched without error and never reach the page). The fork exists to
+// record demos, where the viewer should see every action anyway.
+
+// Select the tab in its window (never raising the window) if it is not
+// already selected, then wait for a paint so a screenshot or click right after
+// has a frame to work with.
+async function ensureTabSelected(tabId) {
+  let tab;
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch {
+    return; // the caller's own lookup reports a missing tab
+  }
+  if (tab.active) return;
+  await chrome.tabs.update(tabId, { active: true });
+  dbg("cdp", "selected tab: unselected tabs get no frames or input here", { tab: tabId });
+  try {
+    // Two rAFs: the first fires before the next paint, the second after it.
+    await withTimeout(
+      cdp(tabId, "Runtime.evaluate", {
+        expression: "new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))",
+        awaitPromise: true,
+        returnByValue: true
+      }),
+      2000,
+      "first paint after selecting tab"
+    );
+  } catch (e) {
+    dbg("cdp", "no paint within 2s of selecting tab", { tab: tabId, err: String(e && e.message).slice(0, 120) });
+  }
+}
 
 // Attach is not idempotent and not instant: two concurrent calls to a
 // not-yet-attached tab both pass the `has` check and the second
@@ -666,6 +694,7 @@ const MAX_SCREENSHOT_HEIGHT = 800;
 
 async function takeScreenshot(tabId) {
   await ensureAttached(tabId);
+  await ensureTabSelected(tabId);
 
   // Capture at EXACTLY CSS-pixel dimensions, because the agent reads click
   // coordinates off this image and clicks are dispatched in CSS pixels. On a
@@ -1432,6 +1461,7 @@ const toolHandlers = {
   async computer(args) {
     const { action, tabId } = args;
     if (!(await isInGroup(tabId))) return { content: [{ type: "text", text: `Tab ${tabId} is not in the MCP group.` }] };
+    if (action !== "wait") await ensureTabSelected(tabId);
 
     let coordinate = args.coordinate;
     // Resolve ref to coordinates if provided. This scrolls the element into
@@ -2577,10 +2607,10 @@ const toolHandlers = {
     };
   },
 
-  // Deliberate, opt-in attention. Nothing else in this extension selects a tab
-  // or raises a window: automation drives background tabs, so the operator is
-  // never yanked around as a side effect. This tool is the ONE way to surface
-  // a tab, and it is the agent's judgement call when that is worth doing.
+  // Deliberate, opt-in attention. Nothing else in this extension raises a
+  // window, and the only other tab selection is ensureTabSelected before the
+  // computer tool acts. This tool selects a tab for other reasons (showing a
+  // result, waiting on the operator) and is the one way to raise its window.
   async set_tab_focus(args) {
     const { tabId, focus_window = false } = args;
     if (!(await isInGroup(tabId))) {
