@@ -5,14 +5,21 @@ set -e
 # Registers the native messaging host for Chrome, Edge, and Brave on
 # macOS, Linux, and Windows (run under Git Bash / MSYS2 / Cygwin).
 #
-# Usage: ./install.sh <extension-id> [extension-id-2] [extension-id-3] ...
+# Usage: ./install.sh [--with-codemode] <extension-id> [extension-id-2] ...
 #
 # Pass one extension ID per browser. Each Chromium browser assigns a different
 # ID when loading unpacked extensions, so if you use both Chrome and Brave,
-# pass both IDs.
+# pass both IDs. --with-codemode also installs the execute_code sandbox
+# (wrangler + workerd), which only the codemode and hybrid servers use.
 
-if [ -z "$1" ]; then
-  echo "Usage: ./install.sh <extension-id> [extension-id-2] ..."
+WITH_CODEMODE=0
+EXTENSION_IDS=()
+for arg in "$@"; do
+  if [ "$arg" = "--with-codemode" ]; then WITH_CODEMODE=1; else EXTENSION_IDS+=("$arg"); fi
+done
+
+if [ ${#EXTENSION_IDS[@]} -eq 0 ]; then
+  echo "Usage: ./install.sh [--with-codemode] <extension-id> [extension-id-2] ..."
   echo ""
   echo "Pass one extension ID per browser you want to use."
   echo "Each browser assigns a different ID to the same unpacked extension."
@@ -27,7 +34,6 @@ if [ -z "$1" ]; then
   exit 1
 fi
 
-EXTENSION_IDS=("$@")
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOST_DIR="$SCRIPT_DIR/host"
 HOST_NAME="com.anthropic.open_claude_in_chrome"
@@ -47,20 +53,27 @@ if ! command -v node &> /dev/null; then
   exit 1
 fi
 
-# Verify npm dependencies are installed
+if ! command -v pnpm &> /dev/null; then
+  echo "Error: pnpm is not installed. Install it first: https://pnpm.io/installation"
+  exit 1
+fi
+
+# Exactly what the lockfile pins, and no dependency install scripts: the host's
+# dependencies have none to run.
 if [ ! -d "$HOST_DIR/node_modules" ]; then
-  echo "Installing npm dependencies..."
-  cd "$HOST_DIR" && npm install
+  echo "Installing host dependencies..."
+  cd "$HOST_DIR" && pnpm install --frozen-lockfile --ignore-scripts
   cd "$SCRIPT_DIR"
 fi
 
 # The codemode/hybrid servers bundle a Cloudflare Worker (execute_code) that
 # imports @cloudflare/codemode; wrangler's build fails if the worker's own
-# dependencies aren't installed. Install them here so execute_code works.
+# dependencies aren't installed. Opt-in, since the default server never uses
+# it. Its pnpm-workspace.yaml decides which build scripts may run.
 WORKER_DIR="$HOST_DIR/codemode/worker"
-if [ -f "$WORKER_DIR/package.json" ] && [ ! -d "$WORKER_DIR/node_modules" ]; then
+if [ "$WITH_CODEMODE" = 1 ] && [ -f "$WORKER_DIR/package.json" ] && [ ! -d "$WORKER_DIR/node_modules" ]; then
   echo "Installing codemode worker dependencies..."
-  cd "$WORKER_DIR" && npm install
+  cd "$WORKER_DIR" && pnpm install --frozen-lockfile
   cd "$SCRIPT_DIR"
 fi
 

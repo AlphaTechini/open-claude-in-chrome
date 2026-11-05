@@ -144,15 +144,20 @@ One flow, top to bottom, turns everything on — all 21 browser tools,
 
 ### Step 1: Install dependencies
 
+Requires [pnpm](https://pnpm.io/installation). Both installs use the committed
+lockfile exactly.
+
 ```bash
-npm install --prefix host
-npm install --prefix host/codemode/worker
+pnpm --dir host install --frozen-lockfile --ignore-scripts
+pnpm --dir host/codemode/worker install --frozen-lockfile
 ```
 
-The second one is not optional: it provisions the sandbox that `execute_code`
-runs in. Skip it and the server falls back to fetching wrangler over the network
-on every cold start, which is the most common reason `execute_code` fails to
-come up.
+The second one is only for `execute_code` (the codemode and hybrid servers): it
+provisions the sandbox that `execute_code` runs in. Skip it and those servers
+fall back to fetching wrangler over the network on every cold start, which is
+the most common reason `execute_code` fails to come up. The default server does
+not need it. The worker's `pnpm-workspace.yaml` denies the esbuild, workerd and
+sharp install scripts, which only verify binaries that pnpm already installed.
 
 ### Step 2: Load the extension
 
@@ -168,6 +173,10 @@ come up.
 ```
 
 If you use multiple browsers, pass all IDs: `./install.sh <chrome-id> <brave-id> <arc-id>`
+
+`install.sh` installs the host dependencies if they are missing. Add
+`--with-codemode` to also install the `execute_code` worker:
+`./install.sh --with-codemode <your-extension-id>`.
 
 ### Step 4: Restart your browser
 
@@ -256,7 +265,7 @@ the behaviour to recognise: browser tools still work, only `execute_code` fails.
 
 To keep it reliable:
 
-1. **Install the worker's dependencies** (Step 1, or `./install.sh`). Without
+1. **Install the worker's dependencies** (Step 1, or `./install.sh --with-codemode`). Without
    `host/codemode/worker/node_modules` the server falls back to
    `npx --yes wrangler`, which needs the network on every cold start. This is
    the single most common cause of a sandbox that "sometimes isn't there".
@@ -450,7 +459,7 @@ Every tool, its purpose, and its parity with the official Claude in Chrome exten
 
 Notes on the divergences (✗):
 
-- `file_upload` matches Claude in Chrome's interface (`paths`, `ref`, `tabId`) but does **not** restrict sources to session-shared paths — any absolute path on this machine is accepted.
+- `file_upload` matches Claude in Chrome's interface (`paths`, `ref`, `tabId`), and only accepts files inside one upload folder: `~/Downloads/ocic-uploads` by default, or `uploadDir` in `~/.config/open-claude-in-chrome/config.json`, or the `OCIC_UPLOAD_DIR` environment variable of the MCP server. Paths are resolved first, so `..` and symlinks cannot leave the folder. This keeps a prompt injection from having the agent attach a key or keystore to a form.
 - `upload_image` is file-input-only (target it by `ref`); Claude in Chrome additionally supports dropping an image at a `coordinate` (e.g. Google Docs).
 - `gif_creator`, `shortcuts_list`, and `shortcuts_execute` are stubs.
 - `switch_browser` releases the shared runtime for ~15s so another browser can take over, in place of Claude in Chrome's `list_connected_browsers` / `select_browser` pair.
