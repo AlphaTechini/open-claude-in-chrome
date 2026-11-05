@@ -11,6 +11,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { watchParent } from "../parent-watch.js";
 
 import {
@@ -139,15 +140,25 @@ export function unwrapMcpResult(result) {
   });
 }
 
+// Loopback TCP is reachable by every local user and, through simple POSTs, by
+// web pages. A per-process secret in the path keeps tool calls limited to the
+// worker we spawned and hand the URL to.
+function secretMatches(given, secret) {
+  const a = Buffer.from(String(given));
+  const b = Buffer.from(secret);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 export function startCallbackServer(upstream) {
+  const secret = randomBytes(32).toString("hex");
   return new Promise((resolve, reject) => {
     const server = http.createServer(async (req, res) => {
-      const m = req.url && req.url.match(/^\/tool\/(.+)$/);
-      if (!m || req.method !== "POST") {
+      const m = req.url && req.url.match(/^\/([^/]+)\/tool\/(.+)$/);
+      if (!m || req.method !== "POST" || !secretMatches(m[1], secret)) {
         res.writeHead(404).end();
         return;
       }
-      const name = decodeURIComponent(m[1]);
+      const name = decodeURIComponent(m[2]);
       let body = "";
       for await (const chunk of req) body += chunk;
       let args;
@@ -178,7 +189,7 @@ export function startCallbackServer(upstream) {
     server.listen(0, "127.0.0.1", () => {
       const { port } = server.address();
       log(`callback server on :${port}`);
-      resolve({ server, port });
+      resolve({ server, port, url: `http://127.0.0.1:${port}/${secret}` });
     });
   });
 }

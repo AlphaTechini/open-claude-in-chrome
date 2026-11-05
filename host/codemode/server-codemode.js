@@ -37,7 +37,7 @@ const EXTRA_NOTES = `
 async function main() {
   // --- Phase 1: fast init (everything except wrangler) ---
   const { client: upstream, tools: upstreamTools } = await connectUpstream();
-  const { server: callbackServer, port: callbackPort } =
+  const { server: callbackServer, url: callbackUrl } =
     await startCallbackServer(upstream);
 
   // Generate the TS API in-process — no /generate fetch, no wrangler needed.
@@ -60,7 +60,7 @@ async function main() {
       wranglerProc = proc;
       runCode = makeRunCode({
         workerPort,
-        callbackUrl: `http://127.0.0.1:${callbackPort}`,
+        callbackUrl,
         tools: upstreamTools,
         namespace: NAMESPACE
       });
