@@ -8,15 +8,19 @@ wallet approvals always left to a human.
 ## Resume here
 
 If this file is being read after a Claude Code restart ("continue testing from FORK-NOTES.md"):
-1. Steps 1-6 are done.
-2. Step 7 is in progress. Plan items 1-8 pass, after fixes F1-F4 found during testing
-   (see [TEST-RESULTS.md](TEST-RESULTS.md)). Items 9 and 10 are next, and both need the
-   user at the Demo window. The branch is pushed to `origin`.
-3. After any change to `extension/`, the user must reload the extension at
+1. Steps 1-8 are done.
+2. Step 7 result: Plan items 1-9 pass, after fixes F1-F4 found during testing (see
+   [TEST-RESULTS.md](TEST-RESULTS.md)). Item 10 (wallet) was skipped by the user, who
+   approves wallet popups by hand. The branch is pushed to `origin`.
+3. The MCP server is also registered in OpenCode 2.2.5, globally
+   (`opencode mcp add --global open-claude-in-chrome -- node <repo>\host\mcp-server.js`).
+   A running OpenCode must be restarted to see it. Only one browser profile with the
+   extension enabled owns the bridge at a time (`claimPipe` in `host/native-host.js`), so
+   switch the extension off in profiles that should not be driven.
+4. After any change to `extension/`, the user must reload the extension at
    `chrome://extensions` before retesting. Refs from before a reload are gone.
-4. The MCP tools for this fork are named `mcp__open-claude-in-chrome__*`. They are different
-   from the official extension's `mcp__claude-in-chrome__*` tools. Use only the fork's tools
-   for step 7.
+5. The MCP tools for this fork are named `mcp__open-claude-in-chrome__*`. They are different
+   from the official extension's `mcp__claude-in-chrome__*` tools.
 
 ## Setup facts
 
@@ -41,8 +45,8 @@ If this file is being read after a Claude Code restart ("continue testing from F
 | 4. Fix | Done: see the fix status table in AUDIT.md |
 | 5. Automated tests | Done: all pass (below) |
 | 6. Local install | Done |
-| 7. Live testing | In progress: [TEST-RESULTS.md](TEST-RESULTS.md) |
-| 8. Wrap up | Not started. Push to `origin` only, no upstream PR |
+| 7. Live testing | Done (wallet item skipped by the user): [TEST-RESULTS.md](TEST-RESULTS.md) |
+| 8. Wrap up | Done. Pushed to `origin` only, no upstream PR. Also registered in OpenCode |
 
 ## Corrections to the original brief
 

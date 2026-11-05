@@ -75,8 +75,13 @@ typing, Tab, `form_input`, `read_page`, `find`, `get_page_text`, `javascript_too
 `read_console_messages`, and screenshots of a selected and a background tab. The list
 stayed empty. Pass.
 
-Still open: step 10 (wallet flow), to be run in the user's real profile. See AUDIT.md
-section 12.
+### Wallet flow (plan item 10)
+
+Not run. The user chose to approve wallet popups by hand while recording instead of a
+separate test. What still holds from earlier checks: tools refuse other extensions' pages
+and `chrome-extension:` navigation (`test/guards.test.mjs`), and Chrome itself blocks CDP and
+scripting inside another extension's popup (AUDIT.md section 8). The MANUAL APPROVAL NEEDED
+notice was not observed live.
 
 ## Fixes made during step 7
 
