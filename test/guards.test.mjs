@@ -1,7 +1,9 @@
 // Security guards in extension/background.js, run as SHIPPED source against a
 // mocked chrome.* API. Each section pins one boundary the extension must not
 // cross on an agent's say-so.
-import { extractFunction, compile } from "./_extract.mjs";
+import fs from "node:fs";
+import path from "node:path";
+import { extractFunction, compile, ROOT } from "./_extract.mjs";
 let fail = 0;
 const ok = (c, m) => { console.log((c ? "  PASS " : "  FAIL ") + m); if (!c) fail++; };
 
@@ -52,6 +54,24 @@ console.log("== audit_mode: never records a tab outside the MCP group ==");
   ok(noted[1].tabId === undefined, "an action naming a tab outside the group gives the recorder no tab");
   ok(noted[2].tabId === undefined, "an action with no tab gives the recorder no tab");
   ok(noted.length === 3 && sent.length === 3, "every action is still logged and answered");
+}
+
+console.log("== recorder: sensitive field values never reach the trace ==");
+{
+  const CAPTURE = path.join(ROOT, "extension", "recorder", "capture.js");
+  const decl = fs.readFileSync(CAPTURE, "utf8").match(/const SENSITIVE_AUTOCOMPLETE = .*;/)[0];
+  const isSensitive = compile(`${decl}\n${extractFunction("isSensitive", CAPTURE)}`, {}, "isSensitive");
+  const el = (tagName, type, autocomplete) => ({
+    tagName, type, getAttribute: (a) => (a === "autocomplete" ? autocomplete ?? null : null)
+  });
+  ok(isSensitive(el("INPUT", "password")), "type=password is masked");
+  ok(isSensitive(el("INPUT", "PASSWORD")), "type matching is case-insensitive");
+  ok(isSensitive(el("INPUT", "text", "one-time-code")), "autocomplete=one-time-code is masked");
+  ok(isSensitive(el("INPUT", "text", "section-pay cc-number")), "autocomplete=cc-number (with a section token) is masked");
+  ok(isSensitive(el("INPUT", "text", "new-password")), "autocomplete=new-password is masked");
+  ok(!isSensitive(el("INPUT", "text", "email")), "an ordinary email field is kept");
+  ok(!isSensitive(el("TEXTAREA", "textarea")), "an ordinary textarea is kept");
+  ok(!isSensitive(el("INPUT", "search", "off")), "autocomplete=off alone does not mask");
 }
 
 console.log(fail ? `\n${fail} GUARD TEST(S) FAILED` : "\nALL GUARD TESTS PASSED");

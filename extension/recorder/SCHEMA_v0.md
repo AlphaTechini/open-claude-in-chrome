@@ -126,6 +126,9 @@ flagged by the event-level `inferred`. Deliberate exceptions, with reasons:
   OCIC `type` into the focused field — not a keystroke stream. Standalone keys
   and shortcuts (Enter/Tab/Escape, ctrl/cmd combos) appear as `key` events in
   OCIC combo syntax.
+- **Sensitive fields are masked.** For password inputs and fields marked
+  `autocomplete` current-password, new-password, one-time-code, or cc-*, the
+  `type` event is kept but its text is the literal `"[masked]"`.
 - **`scroll` comes from wheel bursts** (1 tick = 100px, OCIC's own constant,
   clamped to 1..10). Scrollbar drags don't fire wheel; they surface as drags
   plus frame changes.

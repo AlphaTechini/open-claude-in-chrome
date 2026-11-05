@@ -389,13 +389,21 @@
     true
   );
 
+  // Fields whose value must never reach trace.json. The event itself is kept so
+  // the trace still shows that something was typed there.
+  const SENSITIVE_AUTOCOMPLETE = /\b(current-password|new-password|one-time-code|cc-number|cc-csc|cc-exp(-month|-year)?)\b/i;
+  function isSensitive(el) {
+    if (el.tagName === "INPUT" && (el.type || "").toLowerCase() === "password") return true;
+    return SENSITIVE_AUTOCOMPLETE.test(el.getAttribute("autocomplete") || "");
+  }
+
   document.addEventListener(
     "change",
     (e) => {
       if (!recording) return;
       const el = e.target;
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT")) {
-        emit("type", el, { text: (el.value || "").slice(0, 200) });
+        emit("type", el, { text: isSensitive(el) ? "[masked]" : (el.value || "").slice(0, 200) });
       }
     },
     true
