@@ -745,15 +745,19 @@ async function takeScreenshot(tabId) {
   // itself: clip to the viewport and scale by 1/ratio, which yields an image
   // whose pixels ARE CSS pixels. Emulation would also achieve this, but at the
   // cost of freezing the viewport (see ensureAttached).
+  //
+  // Clip x/y are measured from the document origin, not the viewport, so the
+  // scroll offset must be added. With (0,0) a page scrolled by N px came back
+  // as the document's top: N px of blank, then content from above the fold.
   let clip = null;
   try {
     const vp = await cdp(tabId, "Runtime.evaluate", {
-      expression: "JSON.stringify([innerWidth, innerHeight, devicePixelRatio])",
+      expression: "JSON.stringify([innerWidth, innerHeight, devicePixelRatio, scrollX, scrollY])",
       returnByValue: true
     });
-    const [vw, vh, dpr] = JSON.parse(vp.result.value);
+    const [vw, vh, dpr, sx, sy] = JSON.parse(vp.result.value);
     if (vw > 0 && vh > 0) {
-      clip = { x: 0, y: 0, width: vw, height: vh, scale: 1 / (dpr > 0 ? dpr : 1) };
+      clip = { x: sx || 0, y: sy || 0, width: vw, height: vh, scale: 1 / (dpr > 0 ? dpr : 1) };
     }
   } catch {}
 
@@ -1795,21 +1799,20 @@ const toolHandlers = {
 
       case "scroll_to": {
         if (!coordinate && !args.ref) return { content: [{ type: "text", text: "coordinate or ref is required for scroll_to" }] };
-        if (args.ref) {
-          await sendContentMessage(tabId, {
-            type: "scrollToRef",
-            ref: args.ref,
-          });
-        }
-        // Scroll target element into view via JS
-        if (coordinate) {
+        // A ref was already scrolled into view when it was resolved above, and
+        // `coordinate` now holds its viewport position. Passing that to
+        // window.scrollTo, as this used to, jumped the page back to the top.
+        const refOnly = args.ref && !args.coordinate;
+        if (!refOnly) {
           await cdp(tabId, "Runtime.evaluate", {
             expression: `window.scrollTo(${coordinate[0]}, ${coordinate[1]})`,
           });
         }
         // Let the page repaint the scroll; Chrome is fast, Brave slower.
         await sleep((await isBrave()) ? 300 : 100);
-        return { content: [{ type: "text", text: `Scrolled to target` }] };
+        return { content: [{ type: "text", text: refOnly
+          ? `Scrolled ${args.ref} into view; it is now at (${coordinate[0]}, ${coordinate[1]})${hitNote}`
+          : `Scrolled the page to (${coordinate[0]}, ${coordinate[1]})` }] };
       }
 
       case "wait": {
