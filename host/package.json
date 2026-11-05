@@ -8,8 +8,8 @@
     "test": "node test/endpoint.test.mjs && node test/parent-watch.test.mjs && node test/ownership.test.mjs && node test/callback-auth.test.mjs && node test/upload-guard.test.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
-    "zod": "^3.23.8",
-    "zod-to-json-schema": "^3.24.0"
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.2"
   }
 }
