@@ -39,9 +39,25 @@ Final state, after the fixes below were loaded.
 | 5 | `scroll` on the page and on a nested scroll box | Pass. |
 | 5 | `scroll_to` with a ref | Pass after fix F4. |
 | 6 | `javascript_tool`, `read_console_messages` | Pass. |
-| 6 | `read_network_requests` | Returned nothing on test-form while unpkg was hanging. Not rechecked. |
+| 6 | `read_network_requests` | Pass. Capture starts at the first call on a tab, so the first read is empty; after a page reload it listed the page's requests. See minor notes. |
 | 6 | `debug`, `debug_timings` | Pass. Used to pin down F1 to F4. |
 | 8 | Recording off by default | Pass. No `~/.config/open-claude-in-chrome/recordings` folder exists, and the debug log has no recorder traffic (it only covered about 3 minutes, after a worker restart). |
+
+### Watched run on go.dev (user observing)
+
+Task: starting from go.dev, find Context and four other Go concepts by clicking through the
+site, then (on the user's request mid-run) by using the search bar. All five were found:
+
+1. Context: Docs menu (hover), Standard library, scroll, `context`.
+2. Goroutines: Docs menu, Effective Go, contents link by ref.
+3. Channels: browser back to the contents, contents link.
+4. Error wrapping: Packages, click the search bar, type `errors`, Enter, open the
+   standard library result, `scroll_to` the wrapping paragraph.
+5. Mutex: `/` shortcut to focus the search bar, type `sync.Mutex`, Enter, open the result.
+
+Hover menus, ref clicks into off-screen content, back navigation, typing, Enter, the `/`
+shortcut and screenshots on scrolled pages all behaved. The go.dev cookie banner was left
+alone rather than accepted on the user's behalf.
 
 Still open, and all need the user: step 7 (visual check for a cursor overlay and the
 "started debugging this browser" bar), step 9 (service worker network check) and step 10
@@ -70,5 +86,8 @@ files changed).
   nothing, while "Confirm" found the button. The tool description says "natural language".
 - Two tabs in one window reported different viewports until each was selected. Upstream
   documents that Chrome does not re-layout an unselected tab, and F1/F2 select it now.
+- `read_network_requests` enables network capture on its first call for a tab, so that
+  call returns nothing and only later traffic is listed. Capture also resets when the
+  extension reloads. The tool description does not say this.
 - Refs reset when the extension is reloaded, so a ref from before a reload resolves to
   nothing. The tool says so and asks for a fresh `read_page`.
