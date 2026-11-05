@@ -9,7 +9,7 @@ wallet approvals always left to a human.
 
 If this file is being read after a Claude Code restart ("continue testing from FORK-NOTES.md"):
 1. Steps 1-5 are done.
-2. Step 6 is in progress. Check the "Step 6 progress" section for which parts are confirmed.
+2. Step 6 is done once the user has restarted Chrome and Claude Code. See "Step 6 progress".
 3. Step 7 (live testing) is next. The plan is in the "Step 7 plan" section. Results go in
    [TEST-RESULTS.md](TEST-RESULTS.md).
 4. The MCP tools for this fork are named `mcp__open-claude-in-chrome__*`. They are different
@@ -38,7 +38,7 @@ If this file is being read after a Claude Code restart ("continue testing from F
 | 3. Dependency audit | Done: AUDIT.md section 11 |
 | 4. Fix | Done: see the fix status table in AUDIT.md |
 | 5. Automated tests | Done: all pass (below) |
-| 6. Local install | Waiting on the user (extension ID) |
+| 6. Local install | Done except the user's restarts |
 | 7. Live testing | Not started |
 | 8. Wrap up | Not started. Push to `origin` only, no upstream PR |
 
@@ -101,13 +101,24 @@ After the fixes (final tree):
 
 ## Step 6 progress
 
-- [ ] User created a Chrome profile "Demo" and disabled the official Claude in Chrome
-      extension in it.
-- [ ] User loaded `extension/` unpacked in Demo and gave the extension ID.
-- [ ] `./install.sh <id>` run (Git Bash). It registers HKCU native messaging keys for
-      Chrome/Edge/Brave and installs host deps if missing.
-- [ ] `claude mcp add open-claude-in-chrome -- node C:\Users\rehob\project\open-claude-in-chrome\host\mcp-server.js`
-- [ ] User restarted Chrome fully, then Claude Code in this folder.
+- [x] User created a Chrome profile "Demo" and disabled the official Claude in Chrome
+      extension in it (user-reported; verify visually in step 7).
+- [x] User loaded `extension/` unpacked in Demo. Extension ID: `nocfniakmakpddaiojiipcbnknpbdmae`.
+- [x] `./install.sh nocfniakmakpddaiojiipcbnknpbdmae` run (2026-11-05). It wrote
+      `host/native-host-wrapper.bat` and `host/com.anthropic.open_claude_in_chrome.json`
+      (both gitignored). `allowed_origins` has only that ID. It registered
+      `HKCU\Software\{Google\Chrome,Microsoft\Edge,BraveSoftware\Brave-Browser}\NativeMessagingHosts\com.anthropic.open_claude_in_chrome`.
+- [x] `claude mcp add open-claude-in-chrome -- node C:\Users\rehob\project\open-claude-in-chrome\host\mcp-server.js`
+      (local scope: only active when Claude Code runs in this repo folder). `claude mcp get`
+      reports Connected.
+- [ ] User fully restarted Chrome (all windows, so the native host registration is read),
+      then restarted Claude Code in this folder.
+
+First thing in step 7: call `mcp__open-claude-in-chrome__tabs_context_mcp` with
+`createIfEmpty: true`. If it says the extension is not connected:
+1. Check that Chrome was fully restarted.
+2. Check that the extension is enabled in the Demo profile.
+3. Check `~/.config/open-claude-in-chrome/host-exits.log`.
 
 ## Step 7 plan
 
