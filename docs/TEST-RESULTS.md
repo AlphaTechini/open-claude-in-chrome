@@ -67,8 +67,16 @@ alone rather than accepted on the user's behalf.
   every extension in the session. The user chose to leave the bar and handle it when
   editing the demo video.
 
-Still open, and both need the user: step 9 (service worker network check) and step 10
-(wallet flow).
+### Network check (plan item 9, user observed)
+
+The user watched the service worker's DevTools Network tab while every tool type ran:
+tab create and close, navigation to local pages, go.dev and back, clicks, wheel scroll,
+typing, Tab, `form_input`, `read_page`, `find`, `get_page_text`, `javascript_tool`,
+`read_console_messages`, and screenshots of a selected and a background tab. The list
+stayed empty. Pass.
+
+Still open: step 10 (wallet flow), to be run in the user's real profile. See AUDIT.md
+section 12.
 
 ## Fixes made during step 7
 
