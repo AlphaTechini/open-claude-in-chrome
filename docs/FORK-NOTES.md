@@ -8,10 +8,12 @@ wallet approvals always left to a human.
 ## Resume here
 
 If this file is being read after a Claude Code restart ("continue testing from FORK-NOTES.md"):
-1. Steps 1-5 are done.
-2. Step 6 is done once the user has restarted Chrome and Claude Code. See "Step 6 progress".
-3. Step 7 (live testing) is next. The plan is in the "Step 7 plan" section. Results go in
-   [TEST-RESULTS.md](TEST-RESULTS.md).
+1. Steps 1-6 are done.
+2. Step 7 is in progress. Plan items 1-6 and 8 pass, after fixes F1-F4 found during
+   testing (see [TEST-RESULTS.md](TEST-RESULTS.md)). Items 7, 9 and 10 are next, and each
+   needs the user at the Demo window.
+3. After any change to `extension/`, the user must reload the extension at
+   `chrome://extensions` before retesting. Refs from before a reload are gone.
 4. The MCP tools for this fork are named `mcp__open-claude-in-chrome__*`. They are different
    from the official extension's `mcp__claude-in-chrome__*` tools. Use only the fork's tools
    for step 7.
@@ -38,8 +40,8 @@ If this file is being read after a Claude Code restart ("continue testing from F
 | 3. Dependency audit | Done: AUDIT.md section 11 |
 | 4. Fix | Done: see the fix status table in AUDIT.md |
 | 5. Automated tests | Done: all pass (below) |
-| 6. Local install | Done except the user's restarts |
-| 7. Live testing | Not started |
+| 6. Local install | Done |
+| 7. Live testing | In progress: [TEST-RESULTS.md](TEST-RESULTS.md) |
 | 8. Wrap up | Not started. Push to `origin` only, no upstream PR |
 
 ## Corrections to the original brief
@@ -81,6 +83,9 @@ If this file is being read after a Claude Code restart ("continue testing from F
 | `66bc4fa` | M7 install.sh pnpm + opt-in codemode |
 | `a69de2e` | host deps upgrade |
 | `3ea186d` | worker deps upgrade |
+| `82d7617` | F1/F2 select the target tab before computer actions |
+| `a3c2088` | F3 real key codes in the key action |
+| `eb59ed4` | F4 screenshot clip at the scroll position, scroll_to by ref |
 
 ## Tests
 
@@ -114,7 +119,7 @@ After the fixes (final tree):
       `claude mcp get` reports Connected.
 - [x] Chrome fully restarted. The native host runs for the extension ID and owns
       `\\.\pipe\open-claude-in-chrome-rehob`.
-- [ ] User restarted Claude Code (any folder) so the `mcp__open-claude-in-chrome__*` tools load.
+- [x] User restarted Claude Code (any folder) so the `mcp__open-claude-in-chrome__*` tools load.
 
 First thing in step 7: call `mcp__open-claude-in-chrome__tabs_context_mcp` with
 `createIfEmpty: true`. If it says the extension is not connected:
