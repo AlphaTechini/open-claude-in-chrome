@@ -5,6 +5,17 @@ Goal: a safe, reliable replacement for the official Claude in Chrome extension f
 recording demo videos (no in-page cursor overlay), usable next to a wallet extension, with
 wallet approvals always left to a human.
 
+## Resume here
+
+If this file is being read after a Claude Code restart ("continue testing from FORK-NOTES.md"):
+1. Steps 1-5 are done.
+2. Step 6 is in progress. Check the "Step 6 progress" section for which parts are confirmed.
+3. Step 7 (live testing) is next. The plan is in the "Step 7 plan" section. Results go in
+   [TEST-RESULTS.md](TEST-RESULTS.md).
+4. The MCP tools for this fork are named `mcp__open-claude-in-chrome__*`. They are different
+   from the official extension's `mcp__claude-in-chrome__*` tools. Use only the fork's tools
+   for step 7.
+
 ## Setup facts
 
 - Clone: `C:\Users\rehob\project\open-claude-in-chrome`. Remotes: `origin` = fork,
@@ -12,11 +23,11 @@ wallet approvals always left to a human.
 - Upstream HEAD is still `6a37c29` (2026-09-22). Nothing new since the first-pass review.
 - OS: Windows 11 Pro 10.0.22000. Install path is Windows via Git Bash (`install.sh`
   `MINGW*` branch, which registers under HKCU).
-- Tooling: Node 24.12.0, npm 11.14.1, Git Bash 5.2.37, Python 3.14.2, gh 2.96.0.
-- The repo uses npm lockfiles, so npm is used here on purpose (explicit instruction for this
-  task).
+- Tooling: Node 24.12.0, pnpm 11.25.0, Git Bash 5.2.37, Python 3.14.2, gh 2.96.0.
 - MCP server to register: `host/mcp-server.js` only. Do not register the codemode/hybrid
   servers.
+- `file_upload` only accepts files in `C:\Users\rehob\Downloads\ocic-uploads`. That folder
+  does not exist yet. Create it only if a test needs `file_upload`.
 
 ## Step status
 
@@ -24,47 +35,103 @@ wallet approvals always left to a human.
 |---|---|
 | 1. Fork and set up | Done |
 | 2. Code audit | Done: [AUDIT.md](AUDIT.md) |
-| 3. Dependency audit | Audit done (AUDIT.md section 11). Upgrades pending |
-| 4. Fix | Pending decisions below |
-| 5. Automated tests | Baseline recorded below |
-| 6. Local install | Not started |
+| 3. Dependency audit | Done: AUDIT.md section 11 |
+| 4. Fix | Done: see the fix status table in AUDIT.md |
+| 5. Automated tests | Done: all pass (below) |
+| 6. Local install | Waiting on the user (extension ID) |
 | 7. Live testing | Not started |
-| 8. Wrap up | Not started |
-
-## Baseline tests (before any change, commit 6a37c29)
-
-- `test/*.test.mjs`: audit-segments 13/13, handlers all pass, humanize-executor all pass,
-  humanize-planners all pass.
-- `host`: `npm test` (endpoint, parent-watch 3/3, ownership 12/12) all pass.
-- `host/codemode/test-*.js` need a live browser. Not run at baseline.
+| 8. Wrap up | Not started. Push to `origin` only, no upstream PR |
 
 ## Corrections to the original brief
 
-- `navigate` does NOT allow `chrome-extension:` URLs. `1a9d2c7` added it, and `a18d096`
-  reverted it 12 minutes later. See AUDIT.md section 8.
+- `navigate` did NOT allow `chrome-extension:` URLs at `6a37c29`. `1a9d2c7` added it, and
+  `a18d096` reverted it 12 minutes later. This branch now refuses such URLs explicitly.
 - CRLF checkout of `install.sh` is fine under Git Bash 5.2.37 (tested). No fix needed.
 
-## Planned changes
+## Decisions (2026-11-05)
 
-No-behavior-change fixes (will just do):
-- Dependency upgrades within declared ranges: `@modelcontextprotocol/sdk` 1.29.0 -> 1.32.2,
-  `wrangler` 4.94.0 -> 4.157.0, `@cloudflare/codemode` 0.3.7 -> 0.3.8. No majors needed
-  (zod 4 and codemode 0.5 bring nothing this project needs).
-- M2: fix the `navigate` load-wait race.
-- M6: `storage.local.setAccessLevel(TRUSTED_CONTEXTS)` (no content script reads storage).
-- L3: unmark the upload target on the early-return path.
-- H1: per-process secret on the codemode callback server (only affects codemode/hybrid).
+- M1: guard plus popup notice. Tools on another extension's page are refused, and every
+  result leads with MANUAL APPROVAL NEEDED while another extension has a popup window open.
+- M5: `file_upload` folder allowlist. Default `~/Downloads/ocic-uploads`, overridable by
+  `OCIC_UPLOAD_DIR` or `uploadDir` in `~/.config/open-claude-in-chrome/config.json`.
+- M7: pnpm instead of npm, using `pnpm import` lockfiles. The npm lockfiles are deleted, and
+  the codemode worker installs only with `--with-codemode`.
+- M3, M4, L2, L6: applied.
+- zod 3 -> 4 (GHSA-mrhx-c7xc-m3w5): deferred as accepted risk. Exposure analysis is in
+  AUDIT.md section 11.
+- The npm-created `host/node_modules` and `host/codemode/worker/node_modules` were deleted
+  with approval and reinstalled by pnpm.
 
-Judgment calls (asked 2026-11-05, answers recorded below):
-- M1: wallet / other-extension guard and approval-popup notice.
-- M5: `file_upload` path restriction.
-- M7: `install.sh` uses `npm ci --ignore-scripts` and makes the codemode worker opt-in.
-- M3, M4, L2: audit gate, recorder password masking, stale-group fallback.
+## Commits on this branch
 
-## Decisions
+| Commit | What |
+|---|---|
+| `3d668ca` | docs: audit + fork notes |
+| `e71f256` | H1 codemode callback secret |
+| `7a1dd50` | M2 navigate load-wait race |
+| `2aac173` | M6 storage.local access level |
+| `e72df01` | L3 upload marker cleanup |
+| `08f90b3` | L2 stale group fallback |
+| `4736113` | M3 audit gate |
+| `22d39b5` | M4 recorder masking |
+| `b01d19a` | L6 manifest permissions |
+| `8a36198` | M5 file_upload folder allowlist |
+| `1b422f2` | M1 other-extension guard + approval notice |
+| `ea2f7b0` | pnpm lockfiles |
+| `66bc4fa` | M7 install.sh pnpm + opt-in codemode |
+| `a69de2e` | host deps upgrade |
+| `3ea186d` | worker deps upgrade |
 
-(filled in as answers arrive)
+## Tests
 
-## What's left
+Baseline at `6a37c29`: all root suites and `host` `npm test` passed. There were no
+pre-existing failures.
 
-See step status table.
+After the fixes (final tree):
+- Root (`for t in test/*.test.mjs; do node "$t"; done`): audit-segments 13/13, guards (new)
+  all pass, handlers all pass, humanize-executor all pass, humanize-planners all pass,
+  navigate (new) all pass.
+- Host (`pnpm --dir host test`): endpoint 7/7, parent-watch 3/3, ownership 12/12,
+  callback-auth (new) 6/6, upload-guard (new) 12/12.
+- Smoke: `mcp-server.js` over stdio with SDK 1.32.2 lists all 26 tools, and `file_upload`
+  with an outside path is refused by the host guard.
+- Worker: wrangler 4.157.0 `wrangler dev` boots and `/generate` answers.
+- Not run: `host/codemode/test-*.js`. They need a live browser and the codemode servers,
+  which this fork does not use.
+
+## Step 6 progress
+
+- [ ] User created a Chrome profile "Demo" and disabled the official Claude in Chrome
+      extension in it.
+- [ ] User loaded `extension/` unpacked in Demo and gave the extension ID.
+- [ ] `./install.sh <id>` run (Git Bash). It registers HKCU native messaging keys for
+      Chrome/Edge/Brave and installs host deps if missing.
+- [ ] `claude mcp add open-claude-in-chrome -- node C:\Users\rehob\project\open-claude-in-chrome\host\mcp-server.js`
+- [ ] User restarted Chrome fully, then Claude Code in this folder.
+
+## Step 7 plan
+
+Serve test pages with `python -m http.server 8765 --bind 127.0.0.1` from the repo root.
+Pages: `http://127.0.0.1:8765/scratch/test-form/`, `/scratch/click-truth/`. test-form pulls
+React/Babel from unpkg (AUDIT L8), so it needs the network.
+
+1. Tabs: `tabs_context_mcp` (createIfEmpty), `tabs_create_mcp`, `tabs_close_mcp`, switching
+   via tabId and `set_tab_focus`.
+2. `navigate`, back/forward, reload (`key` F5 or `navigate` to the same URL), load waiting.
+   Check that back/forward now return quickly (M2).
+3. `read_page`, `find`, `get_page_text` on test-form and Wikipedia (search a term, open the
+   result, scroll to a section).
+4. Click by ref and by coordinate on click-truth. Confirm the landing point matches.
+5. `type`, `key` shortcuts, `form_input`, select dropdowns, `scroll`, screenshots.
+6. `read_console_messages`, `javascript_tool`.
+7. Visual check by the user: no orange cursor or overlay, and whether the "started
+   debugging this browser" bar appears. If it does, relaunch Demo with
+   `--silent-debugger-extension-api` and retest.
+8. Recording off by default: confirm nothing is captured (no files under
+   `~/.config/open-claude-in-chrome/recordings` and no `behavior_event` traffic).
+9. Network check: the user opens the service worker DevTools (chrome://extensions > Inspect
+   views) and watches the Network tab during a few actions. Expect no outbound calls.
+10. Wallet flow on a testnet dapp: Connect Wallet, then sign a message. At each popup, STOP
+    and say "approve the wallet popup, then say done". Confirm the MANUAL APPROVAL NEEDED
+    notice appeared, that the extension never touched the popup, and that the page picked up
+    the result. No transactions unless the user confirms testnet funds on the exact network.

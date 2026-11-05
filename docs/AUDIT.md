@@ -34,6 +34,25 @@ component, the finding says so.
 | L10 | Low | repo | Root `package-lock.json` with no `package.json` |
 | L11 | Info | extension | Viewport size is read in the page's main world (spoofable) |
 
+### Fix status (branch `audit-and-hardening`)
+
+| ID | Status | Commit |
+|---|---|---|
+| H1 | Fixed: per-process secret in the callback URL, test `host/test/callback-auth.test.mjs` | `e71f256` |
+| M1 | Fixed: refusal for other extensions' tabs and `chrome-extension:` navigation, plus a MANUAL APPROVAL NEEDED notice while another extension's popup window is open (`extension/approvals.js`), test `test/guards.test.mjs` | `1b422f2` |
+| M2 | Fixed: listener registered before navigating, test `test/navigate.test.mjs` | `7a1dd50` |
+| M3 | Fixed: audit only gets group tabs, test `test/guards.test.mjs` | `4736113` |
+| M4 | Fixed: password / one-time-code / card values stored as `[masked]`, test `test/guards.test.mjs` | `22d39b5` |
+| M5 | Fixed: host-side folder allowlist (`host/upload-guard.js`), test `host/test/upload-guard.test.mjs` | `8a36198` |
+| M6 | Fixed: `storage.local.setAccessLevel(TRUSTED_CONTEXTS)` | `2aac173` |
+| M7 | Fixed: pnpm, frozen lockfile, host scripts off, codemode worker opt-in (`--with-codemode`) | `ea2f7b0`, `66bc4fa` |
+| M8 | Fixed except zod (accepted risk, section 11) | `a69de2e`, `3ea186d` |
+| L1 | Accepted residual risk (same-user processes) | - |
+| L2 | Fixed, test `test/guards.test.mjs` | `08f90b3` |
+| L3 | Fixed | `e72df01` |
+| L6 | Fixed | `b01d19a` |
+| L4, L5, L7-L11 | Not changed (low, noted) | - |
+
 Confirmed OK (details in the sections below): no overlay or style injection, outbound network
 limited to `api.openai.com` and loopback, content scripts silent while recording is off,
 vendored rrweb byte-identical to npm, bridge is a named pipe / unix socket with no TCP listener
@@ -477,4 +496,31 @@ Install scripts in tree:
 <=0.35.5-rc.1` high, `undici 7.0.0-7.30.0` high, and `ws 8.0.0-8.20.1` high, via miniflare;
 plus `wrangler` and `miniflare` themselves.
 
-Upgrade results are recorded in [FORK-NOTES.md](FORK-NOTES.md).
+### After the fixes
+
+Both directories moved to pnpm 11 (`pnpm import`, same resolved versions, npm lockfiles removed).
+The worker's `pnpm-workspace.yaml` sets `allowBuilds` to `false` for esbuild, workerd, and sharp.
+wrangler 4.157.0 and workerd 1.20261103.1 run without those scripts, verified by booting
+`wrangler dev` and calling `/generate`.
+
+| Directory | Upgrade | `pnpm audit` after |
+|---|---|---|
+| host/ | `@modelcontextprotocol/sdk` 1.29.0 -> 1.32.2 (minor), transitive refresh within ranges | 1 advisory left: zod (accepted, below) |
+| host/codemode/worker/ | `wrangler` 4.94.0 -> 4.157.0, `@cloudflare/codemode` 0.3.7 -> 0.3.8, transitive refresh | None |
+
+Not upgraded:
+- `zod` 3 -> 4: see the accepted risk below.
+- `@cloudflare/codemode` 0.3 -> 0.5: a breaking 0.x bump with nothing this project needs.
+
+### Accepted risk: zod GHSA-mrhx-c7xc-m3w5 (CVE-2023-54404)
+
+- `zod` < 4.6.6 can exhaust memory while validating a very large array whose elements fail
+  validation, because every element's issue is collected.
+- The only patched release is zod 4.6.6 (a major for this project).
+- Exposure here: zod validates MCP tool arguments in `host/mcp-server.js`. They arrive over
+  stdio from Claude Code itself, so an attacker would have to get the model to emit an array
+  with an enormous number of invalid elements. The impact is the local MCP server running out
+  of memory and being respawned by Claude Code. Nothing is disclosed or executed.
+- Decision (2026-11-05): defer. Upgrading means replacing `zod-to-json-schema` with zod 4's
+  `z.toJSONSchema` in `tool-definitions.js` and re-verifying every tool schema. Revisit when
+  this fork next touches tool definitions.
