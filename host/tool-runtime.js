@@ -20,6 +20,7 @@ import net from "node:net";
 
 import { getPipePath } from "./endpoint.js";
 import { noteActivity } from "./parent-watch.js";
+import { checkUploadPaths } from "./upload-guard.js";
 
 const PIPE_PATH = getPipePath();
 
@@ -261,6 +262,11 @@ export async function callTool(toolName, args) {
   noteActivity();
   try {
     const coerced = coerceArgs(args ?? {});
+    if (toolName === "file_upload") {
+      const check = checkUploadPaths(coerced.paths);
+      if (!check.ok) return textResult(check.error);
+      coerced.paths = check.paths;
+    }
     const result = await sendToExtension(toolName, coerced);
     if (typeof result === "string") return textResult(result);
     if (result && result.content) return result;

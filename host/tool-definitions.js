@@ -608,12 +608,12 @@ export const TOOLS = [
   {
     name: "file_upload",
     description:
-      "Upload one or more local files (by absolute path) to a file input element on the page. Use read_page or find to locate the <input type=\"file\">, then pass its ref — do not click file inputs, which opens a native picker you cannot see. Each file must already exist on this machine (the same machine as the browser); the real path is passed straight to the browser, no staging. Keep the combined size of all files in a single call under ~10 MB.",
+      "Upload one or more local files (by absolute path) to a file input element on the page. Use read_page or find to locate the <input type=\"file\">, then pass its ref — do not click file inputs, which opens a native picker you cannot see. Each file must already exist on this machine (the same machine as the browser) and must be inside the user's upload folder (default ~/Downloads/ocic-uploads); paths anywhere else are refused, so if the file is elsewhere ask the user to copy it there. The real path is passed straight to the browser, no staging. Keep the combined size of all files in a single call under ~10 MB.",
     paramShape: {
       paths: z
         .array(z.string())
         .describe(
-          "Absolute paths to the files to upload (e.g., ['/home/user/report.pdf']). Each file must already exist on this machine."
+          "Absolute paths to the files to upload (e.g., ['/home/user/Downloads/ocic-uploads/report.pdf']). Each file must already exist inside the upload folder."
         ),
       ref: z
         .string()
