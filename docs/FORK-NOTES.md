@@ -9,9 +9,9 @@ wallet approvals always left to a human.
 
 If this file is being read after a Claude Code restart ("continue testing from FORK-NOTES.md"):
 1. Steps 1-6 are done.
-2. Step 7 is in progress. Plan items 1-6 and 8 pass, after fixes F1-F4 found during
-   testing (see [TEST-RESULTS.md](TEST-RESULTS.md)). Items 7, 9 and 10 are next, and each
-   needs the user at the Demo window.
+2. Step 7 is in progress. Plan items 1-8 pass, after fixes F1-F4 found during testing
+   (see [TEST-RESULTS.md](TEST-RESULTS.md)). Items 9 and 10 are next, and both need the
+   user at the Demo window. The branch is pushed to `origin`.
 3. After any change to `extension/`, the user must reload the extension at
    `chrome://extensions` before retesting. Refs from before a reload are gone.
 4. The MCP tools for this fork are named `mcp__open-claude-in-chrome__*`. They are different

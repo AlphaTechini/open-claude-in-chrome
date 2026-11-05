@@ -59,8 +59,15 @@ Hover menus, ref clicks into off-screen content, back navigation, typing, Enter,
 shortcut and screenshots on scrolled pages all behaved. The go.dev cookie banner was left
 alone rather than accepted on the user's behalf.
 
-Still open, and all need the user: step 7 (visual check for a cursor overlay and the
-"started debugging this browser" bar), step 9 (service worker network check) and step 10
+### Visual check (plan item 7, user observed)
+
+- No cursor, glow or overlay was drawn on the page. Pass.
+- Chrome's "started debugging this browser" bar does show. An extension cannot hide it;
+  only launching Chrome with `--silent-debugger-extension-api` does, and that hides it for
+  every extension in the session. The user chose to leave the bar and handle it when
+  editing the demo video.
+
+Still open, and both need the user: step 9 (service worker network check) and step 10
 (wallet flow).
 
 ## Fixes made during step 7
