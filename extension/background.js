@@ -620,28 +620,65 @@ function recordNetworkEvent(tabId, requestId, makeRecord) {
 }
 
 // --- Key code mapping ---
-const KEY_MAP = {
-  enter: "Enter", return: "Enter", tab: "Tab", escape: "Escape", esc: "Escape",
-  backspace: "Backspace", delete: "Delete", space: "Space", " ": "Space",
-  arrowup: "ArrowUp", arrowdown: "ArrowDown", arrowleft: "ArrowLeft", arrowright: "ArrowRight",
-  up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight",
-  home: "Home", end: "End", pageup: "PageUp", pagedown: "PageDown",
-  f1: "F1", f2: "F2", f3: "F3", f4: "F4", f5: "F5", f6: "F6",
-  f7: "F7", f8: "F8", f9: "F9", f10: "F10", f11: "F11", f12: "F12",
+// Chrome on Windows runs editing (Backspace, Ctrl+A) and activation (Space on a
+// checkbox) off windowsVirtualKeyCode, so each named key needs its real
+// virtual-key code. Deriving it from the name sent Backspace as "B".
+// `text` makes keyDown produce the character, which is what submits a form on
+// Enter.
+const NAMED_KEYS = {
+  enter: { key: "Enter", code: "Enter", keyCode: 13, text: "\r" },
+  tab: { key: "Tab", code: "Tab", keyCode: 9 },
+  escape: { key: "Escape", code: "Escape", keyCode: 27 },
+  backspace: { key: "Backspace", code: "Backspace", keyCode: 8 },
+  delete: { key: "Delete", code: "Delete", keyCode: 46 },
+  space: { key: " ", code: "Space", keyCode: 32, text: " " },
+  arrowup: { key: "ArrowUp", code: "ArrowUp", keyCode: 38 },
+  arrowdown: { key: "ArrowDown", code: "ArrowDown", keyCode: 40 },
+  arrowleft: { key: "ArrowLeft", code: "ArrowLeft", keyCode: 37 },
+  arrowright: { key: "ArrowRight", code: "ArrowRight", keyCode: 39 },
+  home: { key: "Home", code: "Home", keyCode: 36 },
+  end: { key: "End", code: "End", keyCode: 35 },
+  pageup: { key: "PageUp", code: "PageUp", keyCode: 33 },
+  pagedown: { key: "PageDown", code: "PageDown", keyCode: 34 },
 };
+for (const [alias, name] of [["return", "enter"], ["esc", "escape"], ["up", "arrowup"],
+  ["down", "arrowdown"], ["left", "arrowleft"], ["right", "arrowright"]]) {
+  NAMED_KEYS[alias] = NAMED_KEYS[name];
+}
+for (let n = 1; n <= 12; n++) NAMED_KEYS[`f${n}`] = { key: `F${n}`, code: `F${n}`, keyCode: 111 + n };
 
+// Returns the key event fields for one combo such as "ctrl+a" or "Backspace".
+// Text is only produced when no ctrl/alt/meta is held, so "ctrl+a" selects
+// rather than typing an "a".
 function parseKeyCombo(keyStr) {
-  const parts = keyStr.split("+").map((p) => p.trim().toLowerCase());
+  const parts = keyStr.split("+").map((p) => p.trim()).filter(Boolean);
   let modifiers = 0;
-  let key = "";
+  let name = "";
   for (const part of parts) {
-    if (part === "ctrl" || part === "control") modifiers |= 2;
-    else if (part === "alt") modifiers |= 1;
-    else if (part === "shift") modifiers |= 8;
-    else if (part === "meta" || part === "cmd" || part === "command" || part === "win" || part === "windows") modifiers |= 4;
-    else key = KEY_MAP[part] || part;
+    const lower = part.toLowerCase();
+    if (lower === "ctrl" || lower === "control") modifiers |= 2;
+    else if (lower === "alt") modifiers |= 1;
+    else if (lower === "shift") modifiers |= 8;
+    else if (lower === "meta" || lower === "cmd" || lower === "command" || lower === "win" || lower === "windows") modifiers |= 4;
+    else name = part;
   }
-  return { key, modifiers };
+  const typesText = (modifiers & 7) === 0;
+  const named = NAMED_KEYS[name.toLowerCase()];
+  if (named) {
+    const desc = { ...named };
+    if (!typesText) delete desc.text;
+    return { desc, modifiers };
+  }
+  const d = humanize.keyDescriptorFor(name);
+  if (d) {
+    const shifted = d.shift || (modifiers & 8) !== 0;
+    const key = shifted && /^[a-z]$/i.test(name) ? name.toUpperCase() : name;
+    if (d.shift) modifiers |= 8;
+    return { desc: { key, code: d.code, keyCode: d.keyCode, ...(typesText ? { text: key } : {}) }, modifiers };
+  }
+  // Anything else (Insert, a CJK character) goes out by name with no key code;
+  // pages that care read `key`.
+  return { desc: { key: name, code: "", keyCode: 0 }, modifiers };
 }
 
 function parseModifierString(modStr) {
@@ -1670,27 +1707,24 @@ const toolHandlers = {
         const keys = args.text.split(" ").filter(Boolean);
         for (let r = 0; r < repeat; r++) {
           for (const keyStr of keys) {
-            const { key, modifiers: keyMod } = parseKeyCombo(keyStr);
-            const resolvedKey = key.length === 1 ? key : key;
-            await cdp(tabId, "Input.dispatchKeyEvent", {
-              type: "keyDown",
-              key: resolvedKey,
-              code: resolvedKey.length === 1 ? `Key${resolvedKey.toUpperCase()}` : resolvedKey,
+            const { desc, modifiers: keyMod } = parseKeyCombo(keyStr);
+            const base = {
+              key: desc.key,
+              code: desc.code,
               modifiers: keyMod,
-              windowsVirtualKeyCode: resolvedKey.charCodeAt ? resolvedKey.charCodeAt(0) : 0,
-            });
-            await cdp(tabId, "Input.dispatchKeyEvent", {
-              type: "keyUp",
-              key: resolvedKey,
-              code: resolvedKey.length === 1 ? `Key${resolvedKey.toUpperCase()}` : resolvedKey,
-              modifiers: keyMod,
-            });
+              windowsVirtualKeyCode: desc.keyCode,
+            };
+            await cdp(tabId, "Input.dispatchKeyEvent", desc.text
+              ? { ...base, type: "keyDown", text: desc.text, unmodifiedText: desc.text }
+              : { ...base, type: "rawKeyDown" });
+            await cdp(tabId, "Input.dispatchKeyEvent", { ...base, type: "keyUp" });
             // Brave's debugger pipeline needs a settle window between key
             // events; Chrome acks instantly, so the sleep is pure latency there.
             if (await isBrave()) await sleep(30);
           }
         }
-        return { content: [{ type: "text", text: `Pressed ${repeat} key${repeat > 1 ? "s" : ""}: ${args.text}` }] };
+        const pressed = keys.length * repeat;
+        return { content: [{ type: "text", text: `Pressed ${pressed} key${pressed === 1 ? "" : "s"}: ${args.text}${repeat > 1 ? ` (x${repeat})` : ""}` }] };
       }
 
       case "scroll": {
